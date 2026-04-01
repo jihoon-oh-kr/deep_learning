@@ -1,0 +1,11 @@
+# Detection Pipeline — 의존성
+# pip install -r requirements.txt
+
+
+transformers>=4.40.0          # Grounding DINO 지원
+pillow>=9.0.0
+numpy>=1.23.0
+gradio>=4.20.0
+
+# 선택: GPU 가속 (CUDA 12.x)
+# torch==2.3.0+cu121 --index-url https://download.pytorch.org/whl/cu121
