@@ -17,6 +17,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import detection
 import segmentation
+import inpainting
+import vlm
 from utils import PipelineState, apply_mask_to_image
 
 pipeline = PipelineState()
@@ -65,12 +67,18 @@ def send_to_inpainting():
 
     pipeline.segmentation_mask = seg["final_mask"]
     pipeline.cropped_image     = seg["image"]
+    inpainting.set_inp_inputs(
+        seg["image"],
+        seg["final_mask"],
+        original_image=pipeline.original_image,
+        box=pipeline.selected_detection.box if pipeline.selected_detection else None,
+    )
 
     bg       = apply_mask_to_image(seg["image"], seg["final_mask"])
     pipeline.background_only = bg
 
     mask_vis = Image.fromarray((seg["final_mask"] * 255).astype(np.uint8)).convert("RGB")
-    status   = "마스크 저장 완료. ③ Inpainting 탭으로 이동하세요. (준비 중)"
+    status   = "이미지/마스크가 Inpainting 탭으로 전달됐습니다. ③ 탭으로 이동하세요."
     return np.array(bg), np.array(mask_vis), status
 
 
@@ -188,35 +196,127 @@ def build_main_ui():
                 s_undo.click(   fn=segmentation.gradio_undo,     outputs=[s_image, s_status])
                 s_confirm.click(fn=segmentation.gradio_confirm,  outputs=[s_bg, s_mask, s_status])
                 s_reset.click(  fn=segmentation.gradio_reset,    outputs=[s_image, s_status])
-                s_transfer.click(fn=send_to_inpainting,          outputs=[s_bg, s_mask, s_t_status])
+                s_transfer.click(fn=send_to_inpainting, outputs=[s_bg, s_mask, s_t_status])
 
-            # ── Tab 3: Inpainting (준비 중) ───────────────────────
+            # ── Tab 3: Inpainting ─────────────────────────────────
             with gr.Tab("③ Inpainting"):
-                gr.HTML("""
-                <div style="text-align:center;padding:60px 0;
-                            font-family:'Space Mono',monospace;color:#2a4a6a;font-size:0.9rem;">
-                    ⏳ Inpainting 모듈 준비 중...<br><br>
-                    <span style="font-size:0.72rem;color:#1a3a5a;">
-                        Segmentation 탭에서 마스크를 확정하면 여기서 배경을 자연스럽게 채웁니다.
-                    </span>
-                </div>""")
 
-            # ── Tab 4: VLM Summary (준비 중) ──────────────────────
+                gr.HTML('<p style="font-family:\'Space Mono\',monospace;font-size:0.7rem;color:#3a6f9a;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0 4px 0;">Step 3 — Background Inpainting (Stable Diffusion 1.5)</p>')
+
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        i_bg      = gr.Image(label="객체 제거된 배경 (입력)", type="numpy", height=200)
+                        i_mask    = gr.Image(label="마스크", type="numpy", height=200)
+                        i_prompt  = gr.Textbox(
+                            label="채울 배경 설명 (구체적일수록 좋음)",
+                            value="empty background, no people, natural scene, realistic",
+                            placeholder="예) grass field, concrete floor, wooden wall, empty street",
+                            lines=2,
+                        )
+                        i_neg     = gr.Textbox(
+                            label="네거티브 프롬프트",
+                            value="person, human, people, face, body, blurry, bad quality, distorted, watermark",
+                            lines=2,
+                        )
+                        with gr.Row():
+                            i_steps = gr.Slider(10, 50, value=30, step=5, label="스텝 수")
+                            i_guide = gr.Slider(1.0, 15.0, value=7.5, step=0.5, label="가이던스")
+                        i_seed    = gr.Slider(-1, 9999, value=-1, step=1, label="시드 (-1=랜덤)")
+                        i_run_btn = gr.Button("🎨  인페인팅 실행", variant="primary")
+
+                    with gr.Column(scale=1):
+                        i_result   = gr.Image(label="인페인팅 결과 (크롭)", type="numpy", height=280)
+                        i_full     = gr.Image(label="전체 이미지 (원본에 합성)", type="numpy", height=280)
+                        i_status   = gr.Textbox(label="상태", lines=3, interactive=False)
+                        i_transfer = gr.Button("▶  Step 4: VLM Summary로 전달", variant="primary")
+                        i_t_status = gr.Textbox(label="전달 상태", lines=2, interactive=False)
+
+                i_run_btn.click(
+                    fn=inpainting.gradio_run,
+                    inputs=[i_prompt, i_neg, i_steps, i_guide, i_seed],
+                    outputs=[i_result, i_full, i_status],
+                )
+
+            # ── Tab 4: VLM Summary ────────────────────────────────
             with gr.Tab("④ VLM Summary"):
-                gr.HTML("""
-                <div style="text-align:center;padding:60px 0;
-                            font-family:'Space Mono',monospace;color:#2a4a6a;font-size:0.9rem;">
-                    ⏳ VLM Summary 모듈 준비 중...<br><br>
-                    <span style="font-size:0.72rem;color:#1a3a5a;">
-                        원본 이미지와 선택한 객체 정보를 바탕으로 전체 과정을 요약합니다.
-                    </span>
-                </div>""")
+
+                gr.HTML('<p style="font-family:Space Mono,monospace;font-size:0.7rem;color:#3a6f9a;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0 4px 0;">Step 4 — Pipeline Summary (Qwen2.5-VL)</p>')
+
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        v_original = gr.Image(label="원본 이미지", type="numpy", height=280)
+                        v_final    = gr.Image(label="최종 결과 이미지", type="numpy", height=280)
+                    with gr.Column(scale=1):
+                        v_label    = gr.Textbox(label="제거된 객체 (자동)", interactive=False, lines=1)
+                        v_question = gr.Textbox(
+                            label="추가 질문 (선택 — 비워두면 기본 요약)",
+                            placeholder="예) Was the removal natural?",
+                            lines=3,
+                        )
+                        v_tokens   = gr.Slider(128, 1024, value=512, step=64, label="최대 생성 토큰 수")
+                        v_run_btn  = gr.Button("🔍  요약 생성", variant="primary")
+                        v_summary  = gr.Textbox(label="VLM 요약 결과", lines=10, interactive=False)
 
         # ── Detection → Segmentation 전달 (탭 밖에서 연결) ──
-        # d_transfer 클릭 시: 전달 상태 업데이트 + s_image에 오버레이 표시
         d_transfer.click(
             fn=send_to_segmentation,
             outputs=[s_image, d_t_status],
+        )
+
+        # ── Segmentation → Inpainting 전달 시 i_bg, i_mask 업데이트 ──
+        def load_inpainting_preview():
+            if inpainting._inp_state["image"] is None:
+                return None, None
+            bg = apply_mask_to_image(inpainting._inp_state["image"], inpainting._inp_state["mask"])
+            mask_vis = Image.fromarray((inpainting._inp_state["mask"] * 255).astype(np.uint8)).convert("RGB")
+            return np.array(bg), np.array(mask_vis)
+
+        s_transfer.click(
+            fn=load_inpainting_preview,
+            outputs=[i_bg, i_mask],
+        )
+
+        # ── Inpainting → VLM 전달 ──
+        def send_to_vlm():
+            label      = pipeline.selected_detection.label if pipeline.selected_detection else "object"
+            box        = pipeline.selected_detection.box   if pipeline.selected_detection else None
+            orig       = pipeline.original_image
+            crop_result = inpainting._inp_state["result"]   # 크롭 인페인팅 결과 (VLM 입력용)
+            full_result = None
+            inp_prompt  = inpainting._inp_state.get("last_prompt", "")
+
+            if orig is None or crop_result is None:
+                return None, None, "", "⚠️  Inpainting 결과가 없습니다."
+
+            if isinstance(crop_result, np.ndarray):
+                crop_result = Image.fromarray(crop_result)
+
+            # 전체 합성 이미지 생성 (원본에 인페인팅 결과 붙이기)
+            if box is not None:
+                full_result = inpainting.compose_full_image(crop_result, orig, box)
+            else:
+                full_result = orig
+
+            # VLM에는 크롭 결과 전달 (두 번째 이미지)
+            vlm.set_vlm_inputs(
+                orig, crop_result, label,
+                box=box,
+                inpainting_prompt=inp_prompt,
+            )
+            status = (
+                f"VLM 탭으로 전달 완료!\n"
+                f"객체: '{label}'  박스: {box}\n"
+                f"인페인팅 프롬프트: '{inp_prompt if inp_prompt else '(없음)'}'"
+            )
+            # v_original: 원본, v_final: 전체 합성 이미지 (UI 표시용)
+            return np.array(orig), np.array(full_result), label, status
+
+        i_transfer.click(fn=send_to_vlm, outputs=[v_original, v_final, v_label, i_t_status])
+
+        v_run_btn.click(
+            fn=vlm.gradio_run,
+            inputs=[v_question, v_tokens],
+            outputs=[v_summary],
         )
 
     return demo
@@ -231,11 +331,17 @@ if __name__ == "__main__":
     print("  Object Removal Pipeline — main.py")
     print("=" * 60)
 
-    print("\n[1/2] Detection 모델 로드...")
+    print("\n[1/3] Detection 모델 로드...")
     detection.load_model()
 
-    print("\n[2/2] Segmentation 모델 로드...")
+    print("\n[2/3] Segmentation 모델 로드...")
     segmentation.load_model()
+
+    print("\n[3/4] Inpainting 모델 로드...")
+    inpainting.load_model()
+
+    print("\n[4/4] VLM 모델 로드...")
+    vlm.load_model()
 
     print("\n모든 모델 로드 완료.\n")
 
