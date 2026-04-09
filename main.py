@@ -9,6 +9,28 @@ from __future__ import annotations
 
 import sys
 import os
+import warnings
+import logging
+
+# ── 경고 및 불필요한 출력 억제 ──────────────────────────
+os.environ["TOKENIZERS_PARALLELISM"]              = "false"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"]   = "1"
+os.environ["TRANSFORMERS_VERBOSITY"]              = "error"
+os.environ["DIFFUSERS_VERBOSITY"]                 = "error"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"]     = "1"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"]        = "1"
+os.environ["TQDM_DISABLE"]                        = "1"
+
+warnings.filterwarnings("ignore")
+logging.disable(logging.WARNING)
+
+# transformers / diffusers 로거 레벨 조정
+import transformers
+import diffusers
+transformers.logging.set_verbosity_error()
+diffusers.logging.set_verbosity_error()
+# ────────────────────────────────────────────────────────
+
 import numpy as np
 import gradio as gr
 from PIL import Image
@@ -328,22 +350,34 @@ def build_main_ui():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  Object Removal Pipeline — main.py")
+    print("  Object Removal Pipeline")
+    print("  Detection · Segmentation · Inpainting · VLM")
     print("=" * 60)
 
-    print("\n[1/3] Detection 모델 로드...")
+    print(f"\n[1/4] Detection 모델 로드...       (Grounding DINO tiny · {detection.DEVICE})")
     detection.load_model()
+    print(  "      ✓ 완료")
 
-    print("\n[2/3] Segmentation 모델 로드...")
+    print(f"\n[2/4] Segmentation 모델 로드...    (SAM2 hiera-tiny · {segmentation.DEVICE})")
     segmentation.load_model()
+    print(  "      ✓ 완료")
 
-    print("\n[3/4] Inpainting 모델 로드...")
+    print(f"\n[3/4] Inpainting 모델 로드...      (Stable Diffusion 1.5 · {inpainting.DEVICE})")
     inpainting.load_model()
+    print(  "      ✓ 완료")
 
-    print("\n[4/4] VLM 모델 로드...")
+    print(f"\n[4/4] VLM 모델 로드...             (Qwen2.5-VL-3B · {vlm.DEVICE})")
     vlm.load_model()
+    print(  "      ✓ 완료")
 
-    print("\n모든 모델 로드 완료.\n")
+    print("\n" + "=" * 60)
+    print("  모든 모델 로드 완료. 브라우저가 자동으로 열립니다.")
+    print("  종료: Ctrl+C")
+    print("=" * 60 + "\n")
+
+    # Gradio 서버 로그 억제
+    logging.getLogger("uvicorn").setLevel(logging.ERROR)
+    logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
 
     app = build_main_ui()
     app.launch(
@@ -351,4 +385,6 @@ if __name__ == "__main__":
         server_port=7860,
         show_error=True,
         inbrowser=True,
+        quiet=True,
+        share=True,
     )

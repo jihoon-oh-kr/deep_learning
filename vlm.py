@@ -20,6 +20,14 @@ Qwen2.5-VL 기반 파이프라인 요약 모듈.
 
 from __future__ import annotations
 
+import warnings, logging, os
+warnings.filterwarnings("ignore")
+logging.disable(logging.WARNING)
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
+
 import os
 import sys
 import torch
@@ -54,7 +62,6 @@ def load_model():
 
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 
-    print(f"[vlm] 모델 로드 중: {MODEL_ID}  (device={DEVICE})")
     _processor = AutoProcessor.from_pretrained(MODEL_ID)
     _model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         MODEL_ID,
@@ -62,7 +69,6 @@ def load_model():
         device_map="auto",
     )
     _model.eval()
-    print("[vlm] 모델 로드 완료.")
     return _model, _processor
 
 
@@ -202,7 +208,6 @@ def run_vlm(
         padding=True,
     ).to(DEVICE)
 
-    print(f"[vlm] 추론 중... label='{label}'")
     with torch.no_grad():
         output_ids = model.generate(
             **inputs,
@@ -217,7 +222,6 @@ def run_vlm(
         clean_up_tokenization_spaces=False,
     )[0]
 
-    print("[vlm] 추론 완료.")
     return result.strip()
 
 

@@ -17,6 +17,14 @@ Grounding DINO (tiny) 기반 Open-Vocabulary 객체 탐지 모듈.
 
 from __future__ import annotations
 
+import warnings, logging, os
+warnings.filterwarnings("ignore")
+logging.disable(logging.WARNING)
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
+
 import os
 import sys
 import torch
@@ -57,11 +65,11 @@ def load_model():
     global _processor, _model
     if _model is not None:
         return _processor, _model
-    print(f"[detection] 모델 로드 중: {MODEL_ID}  (device={DEVICE})")
     _processor = AutoProcessor.from_pretrained(MODEL_ID)
-    _model = AutoModelForZeroShotObjectDetection.from_pretrained(MODEL_ID).to(DEVICE)
+    _model = AutoModelForZeroShotObjectDetection.from_pretrained(
+        MODEL_ID, token=False,
+    ).to(DEVICE)
     _model.eval()
-    print("[detection] 모델 로드 완료.")
     return _processor, _model
 
 

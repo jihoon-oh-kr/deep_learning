@@ -18,6 +18,15 @@ Stable Diffusion 1.5 Inpainting 기반 배경 복원 모듈.
 
 from __future__ import annotations
 
+import warnings, logging, os
+warnings.filterwarnings("ignore")
+logging.disable(logging.WARNING)
+os.environ["TQDM_DISABLE"] = "1"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
+
 import os
 import sys
 import torch
@@ -48,8 +57,8 @@ def load_model():
     if _pipe is not None:
         return _pipe
 
-    import os
     import transformers
+    import diffusers as _diffusers
 
     # torch.load 보안 체크 무력화 (torch < 2.6 환경에서 필요)
     os.environ["TRANSFORMERS_VERIFY_SCHEDULED_UPDATES"] = "0"
@@ -61,9 +70,16 @@ def load_model():
     except AttributeError:
         pass
 
-    from diffusers import StableDiffusionInpaintPipeline
+    # diffusers 진행바 및 경고 완전 억제
+    _diffusers.logging.set_verbosity_error()
+    os.environ["DIFFUSERS_VERBOSITY"] = "error"
 
-    print(f"[inpainting] 모델 로드 중: {MODEL_ID}  (device={DEVICE})")
+    from diffusers import StableDiffusionInpaintPipeline
+    import logging as _logging
+    # "An error occurred while trying to fetch" 메시지 억제
+    _logging.getLogger("diffusers.pipelines.pipeline_utils").setLevel(_logging.CRITICAL)
+    _logging.getLogger("diffusers").setLevel(_logging.CRITICAL)
+
     _pipe = StableDiffusionInpaintPipeline.from_pretrained(
         MODEL_ID,
         torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32,
@@ -73,7 +89,6 @@ def load_model():
     if DEVICE == "cuda":
         _pipe.enable_attention_slicing()
 
-    print("[inpainting] 모델 로드 완료.")
     return _pipe
 
 
@@ -164,7 +179,6 @@ def run_inpainting(
     if seed >= 0:
         generator = torch.Generator(device=DEVICE).manual_seed(seed)
 
-    print(f"[inpainting] 실행 중... prompt='{prompt}'  steps={num_steps}")
 
     result = pipe(
         prompt=prompt.strip(),
@@ -178,7 +192,6 @@ def run_inpainting(
 
     # 후처리: 원본 크기 복원 + 배경 보존
     final = postprocess(result, image, mask, orig_w, orig_h)
-    print("[inpainting] 완료.")
     return final
 
 

@@ -13,6 +13,14 @@ SAM2 기반 인터랙티브 세그멘테이션 모듈.
 
 from __future__ import annotations
 
+import warnings, logging, os
+warnings.filterwarnings("ignore")
+logging.disable(logging.WARNING)
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
+
 import os
 import sys
 import torch
@@ -51,11 +59,9 @@ def load_model():
     global _processor, _model
     if _model is not None:
         return _processor, _model
-    print(f"[segmentation] 모델 로드 중: {MODEL_ID}  (device={DEVICE})")
     _processor = Sam2Processor.from_pretrained(MODEL_ID)
     _model     = Sam2Model.from_pretrained(MODEL_ID).to(DEVICE)
     _model.eval()
-    print("[segmentation] 모델 로드 완료.")
     return _processor, _model
 
 
@@ -212,7 +218,6 @@ def gradio_click(evt: gr.SelectData):
     x = max(0, min(x, img_w - 1))
     y = max(0, min(y, img_h - 1))
 
-    print(f"[seg] 표시좌표: ({disp_x:.0f},{disp_y:.0f}) scale={scale:.3f} → 원본좌표: ({x},{y})  이미지: {img_w}x{img_h}")
     _seg_state["points"].append((x, y))
 
     mask = run_segmentation(_seg_state["image"], _seg_state["points"])
