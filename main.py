@@ -50,6 +50,14 @@ pipeline = PipelineState()
 # 탭 간 전달 함수
 # ──────────────────────────────────────────────
 
+def pipeline_confirm():
+    """segmentation.gradio_confirm 호출 후 파이프라인 안내 문구 추가."""
+    bg, mask, status = segmentation.gradio_confirm()
+    if mask is not None:
+        status += "\n'Inpainting으로 전달' 버튼으로 다음 단계 진행하세요."
+    return bg, mask, status
+
+
 def send_to_segmentation():
     """
     Detection 탭 → Segmentation 탭.
@@ -216,7 +224,7 @@ def build_main_ui():
                 # Segmentation 이벤트
                 s_image.select(fn=segmentation.gradio_click,    outputs=[s_image, s_status])
                 s_undo.click(   fn=segmentation.gradio_undo,     outputs=[s_image, s_status])
-                s_confirm.click(fn=segmentation.gradio_confirm,  outputs=[s_bg, s_mask, s_status])
+                s_confirm.click(fn=pipeline_confirm,             outputs=[s_bg, s_mask, s_status])
                 s_reset.click(  fn=segmentation.gradio_reset,    outputs=[s_image, s_status])
                 s_transfer.click(fn=send_to_inpainting, outputs=[s_bg, s_mask, s_t_status])
 

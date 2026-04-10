@@ -273,8 +273,7 @@ def gradio_confirm():
 
     status = (
         f"마스크 확정 완료!\n"
-        f"마스크 커버리지: {coverage}%  ({mask.sum():,} / {mask.size:,} px)\n"
-        f"'Inpainting으로 전달' 버튼으로 다음 단계 진행하세요."
+        f"마스크 커버리지: {coverage}%  ({mask.sum():,} / {mask.size:,} px)"
     )
     return np.array(bg_image), np.array(mask_vis), status
 
@@ -390,4 +389,4 @@ if __name__ == "__main__":
     print("=" * 60)
     load_model()
     app = build_ui()
-    app.launch(server_name="0.0.0.0", server_port=7861, show_error=True, inbrowser=True)
+    app.launch(server_name="0.0.0.0", server_port=7861, show_error=True, inbrowser=True, share=True)
