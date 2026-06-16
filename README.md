@@ -46,7 +46,6 @@ pip install -r requirements.txt
 
 ```bash
 python detection.py
-# 접속 주소: http://localhost:7860
 ```
 
 | 항목 | 내용 |
@@ -66,7 +65,6 @@ python detection.py
 
 ```bash
 python segmentation.py
-# 접속 주소: http://localhost:7861
 ```
 
 | 항목 | 내용 |
@@ -86,7 +84,6 @@ python segmentation.py
 
 ```bash
 python vlm.py
-# 접속 주소: http://localhost:7863
 ```
 
 | 항목 | 내용 |
@@ -108,7 +105,6 @@ python vlm.py
 
 ```bash
 python main.py
-# 접속 주소: http://localhost:7860
 ```
 
 ### 파이프라인 흐름
