@@ -122,35 +122,54 @@ def build_main_ui():
     @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
     * { box-sizing: border-box; }
     body, .gradio-container { background: #060910 !important; font-family: 'Syne', sans-serif !important; }
-    .tab-nav button { font-family: 'Space Mono', monospace !important; font-size: 0.78rem !important;
-                      letter-spacing: 0.08em !important; text-transform: uppercase !important; }
-    .hint-box { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: #5a9abf;
-                background: #0a1520; border: 1px solid #1a3a5c; border-radius: 8px;
+    /* 탭 버튼 — 버전 무관하게 잡히도록 role/aria 선택자 사용 */
+    .tabs > .tab-nav, .tab-nav { border-bottom: 1px solid #3a3a3a !important; gap: 6px !important; }
+    button[role="tab"], .tab-nav button {
+        font-family: 'Space Mono', monospace !important; font-size: 0.78rem !important;
+        letter-spacing: 0.08em !important; text-transform: uppercase !important;
+        color: #f2f2f2 !important; background: #555a61 !important;
+        border: 1px solid #6b7178 !important; border-radius: 8px 8px 0 0 !important;
+        padding: 8px 16px !important; opacity: 1 !important; transition: all 0.15s ease !important; }
+    button[role="tab"]:hover, .tab-nav button:hover {
+        background: #676d75 !important; border-color: #868d95 !important; }
+    button[role="tab"][aria-selected="true"], .tab-nav button.selected {
+        color: #1a0f00 !important;
+        background: linear-gradient(180deg, #ffae42 0%, #ff8c1a 100%) !important;
+        border-color: #ffae42 !important; font-weight: 700 !important;
+        box-shadow: 0 0 18px rgba(255,150,40,0.55) !important; }
+    .main-tabs button[role="tab"] {
+        color: #f2f2f2 !important; background: #555a61 !important; opacity: 1 !important; }
+    .main-tabs button[role="tab"][aria-selected="true"] {
+        color: #1a0f00 !important;
+        background: linear-gradient(180deg, #ffae42 0%, #ff8c1a 100%) !important; }
+    .hint-box { font-family: 'Space Mono', monospace; font-size: 0.74rem; color: #d8e8f5;
+                background: #16273a; border: 1px solid #3a6f9a; border-radius: 8px;
                 padding: 10px 14px; margin-bottom: 10px; line-height: 1.9; }
+    .hint-box b { color: #ffae42; }
     """
 
-    with gr.Blocks(css=css, title="Object Removal Pipeline") as demo:
+    with gr.Blocks(css=css, title="Object Change Pipeline") as demo:
 
         gr.HTML("""
         <div style="text-align:center; padding:28px 0 8px 0;">
             <h1 style="font-family:'Syne',sans-serif;font-weight:800;font-size:2.4rem;
                        color:#e0f0ff;letter-spacing:-0.02em;margin:0;
                        text-shadow:0 0 40px rgba(100,180,255,0.3);">
-                Object Removal Pipeline
+                Object Change Pipeline
             </h1>
             <p style="font-family:'Space Mono',monospace;font-size:0.72rem;
-                      color:#3a6f9a;letter-spacing:0.12em;text-transform:uppercase;margin:6px 0 0 0;">
+                      color:#7fb4dc;letter-spacing:0.12em;text-transform:uppercase;margin:6px 0 0 0;">
                 Detection · Segmentation · Inpainting · VLM Summary
             </p>
         </div>
         """)
 
-        with gr.Tabs():
+        with gr.Tabs(elem_classes="main-tabs"):
 
             # ── Tab 1: Detection ──────────────────────────────────
             with gr.Tab("① Detection"):
 
-                gr.HTML('<p style="font-family:\'Space Mono\',monospace;font-size:0.7rem;color:#3a6f9a;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0 4px 0;">Step 1 — Open-Vocabulary Object Detection (Grounding DINO)</p>')
+                gr.HTML('<p style="font-family:\'Space Mono\',monospace;font-size:0.7rem;color:#7fb4dc;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0 4px 0;">Step 1 — Open-Vocabulary Object Detection (Grounding DINO)</p>')
 
                 with gr.Row():
                     with gr.Column(scale=1):
@@ -193,18 +212,24 @@ def build_main_ui():
             # ── Tab 2: Segmentation ───────────────────────────────
             with gr.Tab("② Segmentation"):
 
-                gr.HTML('<p style="font-family:\'Space Mono\',monospace;font-size:0.7rem;color:#3a6f9a;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0 4px 0;">Step 2 — Interactive Segmentation (SAM2)</p>')
+                gr.HTML('<p style="font-family:\'Space Mono\',monospace;font-size:0.7rem;color:#7fb4dc;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0 4px 0;">Step 2 — Interactive Segmentation (SAM2)</p>')
 
                 gr.HTML("""
                 <div class="hint-box">
-                    🖱️ <b>좌클릭</b> — 포인트 추가 → 마스크 즉시 업데이트 &nbsp;|&nbsp;
-                    ↩️ <b>마지막 포인트 취소</b> — 되돌리기 &nbsp;|&nbsp;
-                    ✅ <b>확인</b> — 마스크 확정
+                    🖱️ <b>포함 ➕ 좌클릭</b> — 영역 추가 &nbsp;|&nbsp;
+                    🖱️ <b>제외 ➖ 좌클릭</b> — 영역 제외 &nbsp;|&nbsp;
+                    ↩️ <b>마지막 포인트 취소</b> &nbsp;|&nbsp;
+                    ✅ <b>확인</b>
                 </div>
                 """)
 
                 with gr.Row():
                     with gr.Column(scale=1):
+                        s_mode    = gr.Radio(
+                            ["포함 ➕", "제외 ➖"],
+                            value="포함 ➕",
+                            label="클릭 모드 (좌클릭 시 적용)",
+                        )
                         s_image   = gr.Image(
                             label="클릭해서 세그멘테이션 영역 선택 (Detection에서 자동 로드됨)",
                             type="numpy", interactive=True,
@@ -222,7 +247,7 @@ def build_main_ui():
                         s_t_status = gr.Textbox(label="전달 상태", lines=2, interactive=False)
 
                 # Segmentation 이벤트
-                s_image.select(fn=segmentation.gradio_click,    outputs=[s_image, s_status])
+                s_image.select(fn=segmentation.gradio_click,    inputs=[s_mode], outputs=[s_image, s_status])
                 s_undo.click(   fn=segmentation.gradio_undo,     outputs=[s_image, s_status])
                 s_confirm.click(fn=pipeline_confirm,             outputs=[s_bg, s_mask, s_status])
                 s_reset.click(  fn=segmentation.gradio_reset,    outputs=[s_image, s_status])
@@ -231,26 +256,26 @@ def build_main_ui():
             # ── Tab 3: Inpainting ─────────────────────────────────
             with gr.Tab("③ Inpainting"):
 
-                gr.HTML('<p style="font-family:\'Space Mono\',monospace;font-size:0.7rem;color:#3a6f9a;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0 4px 0;">Step 3 — Background Inpainting (Stable Diffusion 1.5)</p>')
+                gr.HTML('<p style="font-family:\'Space Mono\',monospace;font-size:0.7rem;color:#7fb4dc;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0 4px 0;">Step 3 — Background Inpainting (Stable Diffusion 1.5)</p>')
 
                 with gr.Row():
                     with gr.Column(scale=1):
-                        i_bg      = gr.Image(label="객체 제거된 배경 (입력)", type="numpy", height=200)
+                        i_bg      = gr.Image(label="객체 변경된 배경 (입력)", type="numpy", height=200)
                         i_mask    = gr.Image(label="마스크", type="numpy", height=200)
                         i_prompt  = gr.Textbox(
-                            label="채울 배경 설명 (구체적일수록 좋음)",
-                            value="empty background, no people, natural scene, realistic",
+                            label="변경 내용 설명 (구체적일수록 좋음)",
+                            value="natural scene, realistic",
                             placeholder="예) grass field, concrete floor, wooden wall, empty street",
                             lines=2,
                         )
                         i_neg     = gr.Textbox(
                             label="네거티브 프롬프트",
-                            value="person, human, people, face, body, blurry, bad quality, distorted, watermark",
+                            value="blurry, bad quality, distorted, watermark",
                             lines=2,
                         )
                         with gr.Row():
-                            i_steps = gr.Slider(10, 50, value=30, step=5, label="스텝 수")
-                            i_guide = gr.Slider(1.0, 15.0, value=7.5, step=0.5, label="가이던스")
+                            i_steps = gr.Slider(10, 50, value=10, step=5, label="스텝 수")
+                            i_guide = gr.Slider(1.0, 15.0, value=15.0, step=0.5, label="가이던스")
                         i_seed    = gr.Slider(-1, 9999, value=-1, step=1, label="시드 (-1=랜덤)")
                         i_run_btn = gr.Button("🎨  인페인팅 실행", variant="primary")
 
@@ -270,20 +295,20 @@ def build_main_ui():
             # ── Tab 4: VLM Summary ────────────────────────────────
             with gr.Tab("④ VLM Summary"):
 
-                gr.HTML('<p style="font-family:Space Mono,monospace;font-size:0.7rem;color:#3a6f9a;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0 4px 0;">Step 4 — Pipeline Summary (Qwen2.5-VL)</p>')
+                gr.HTML('<p style="font-family:Space Mono,monospace;font-size:0.7rem;color:#7fb4dc;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0 4px 0;">Step 4 — Pipeline Summary (Qwen2.5-VL)</p>')
 
                 with gr.Row():
                     with gr.Column(scale=1):
                         v_original = gr.Image(label="원본 이미지", type="numpy", height=280)
                         v_final    = gr.Image(label="최종 결과 이미지", type="numpy", height=280)
                     with gr.Column(scale=1):
-                        v_label    = gr.Textbox(label="제거된 객체 (자동)", interactive=False, lines=1)
+                        v_label    = gr.Textbox(label="변경된 객체 (자동)", interactive=False, lines=1)
                         v_question = gr.Textbox(
                             label="추가 질문 (선택 — 비워두면 기본 요약)",
-                            placeholder="예) Was the removal natural?",
+                            placeholder="예) Was the change natural?",
                             lines=3,
                         )
-                        v_tokens   = gr.Slider(128, 1024, value=512, step=64, label="최대 생성 토큰 수")
+                        v_tokens   = gr.Slider(128, 1024, value=128, step=64, label="최대 생성 토큰 수")
                         v_run_btn  = gr.Button("🔍  요약 생성", variant="primary")
                         v_summary  = gr.Textbox(label="VLM 요약 결과", lines=10, interactive=False)
 
@@ -358,7 +383,7 @@ def build_main_ui():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  Object Removal Pipeline")
+    print("  Object Change Pipeline")
     print("  Detection · Segmentation · Inpainting · VLM")
     print("=" * 60)
 

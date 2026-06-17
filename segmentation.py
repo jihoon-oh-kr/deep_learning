@@ -44,7 +44,9 @@ DEVICE       = "cuda" if torch.cuda.is_available() else "cpu"
 POINT_RADIUS = 6
 MASK_ALPHA   = 140
 MASK_COLOR   = (50, 180, 255)
-POINT_COLOR  = (255, 60, 60)
+POINT_COLOR  = (255, 60, 60)   # (하위 호환용 — 더 이상 직접 사용 안 함)
+POS_COLOR    = (60, 220, 90)   # 포함(+) 포인트 = 초록
+NEG_COLOR    = (255, 60, 60)   # 제외(−) 포인트 = 빨강
 
 
 # ──────────────────────────────────────────────
@@ -69,13 +71,18 @@ def load_model():
 # 세그멘테이션
 # ──────────────────────────────────────────────
 
-def run_segmentation(image: Image.Image, points: List[Tuple[int, int]]) -> np.ndarray:
+def run_segmentation(
+    image: Image.Image,
+    points: List[Tuple[int, int]],
+    labels: List[int],
+) -> np.ndarray:
     processor, model = load_model()
 
     # SAM2 포인트 형식: [image_level][object_level][point_level][coords]
     # points = [(x0,y0), (x1,y1), ...]  → 각 좌표를 list로 변환해야 4단계가 됨
+    # labels = [1, 0, 1, ...]   (1=포함/foreground, 0=제외/background)
     input_points = [[[[x, y] for x, y in points]]]   # (1,1,N,2)
-    input_labels = [[[1] * len(points)]]              # (1,1,N)
+    input_labels = [[list(labels)]]                   # (1,1,N)
 
     inputs = processor(
         images=image,
@@ -123,13 +130,18 @@ def render_overlay(
     image: Image.Image,
     points: List[Tuple[int, int]],
     mask: Optional[np.ndarray] = None,
+    labels: Optional[List[int]] = None,
 ) -> np.ndarray:
     """
     이미지를 DISPLAY_SIZE 안에 맞게 리사이즈한 뒤,
     리사이즈된 좌표 기준으로 마스크와 포인트를 그려 반환.
     → Gradio가 이미지를 추가로 늘려도 좌표가 일치함.
+    포함(1) 포인트는 초록, 제외(0) 포인트는 빨강으로 표시.
     """
     orig_w, orig_h = image.size
+
+    if labels is None:
+        labels = [1] * len(points)
 
     # 비율 유지하며 DISPLAY_SIZE 안에 맞게 리사이즈
     scale = min(DISPLAY_SIZE / orig_w, DISPLAY_SIZE / orig_h, 1.0)
@@ -146,13 +158,14 @@ def render_overlay(
         overlay.paste(color_layer, mask=mask_resized)
         base = Image.alpha_composite(base, overlay)
 
-    # 포인트도 scale 적용
+    # 포인트도 scale 적용 — label에 따라 색 구분
     draw = ImageDraw.Draw(base)
-    for (x, y) in points:
+    for (x, y), lab in zip(points, labels):
         sx, sy = int(x * scale), int(y * scale)
         r = max(4, int(POINT_RADIUS * scale))
+        color = POS_COLOR if lab == 1 else NEG_COLOR
         draw.ellipse([sx-r, sy-r, sx+r, sy+r],
-                     fill=(*POINT_COLOR, 230),
+                     fill=(*color, 230),
                      outline=(255, 255, 255, 255),
                      width=2)
 
@@ -166,6 +179,7 @@ def render_overlay(
 _seg_state = {
     "image":        None,   # PIL 이미지
     "points":       [],     # [(x, y), ...]
+    "labels":       [],     # [1, 0, ...]  (1=포함, 0=제외)
     "current_mask": None,   # 현재 마스크
     "final_mask":   None,   # 확인 후 최종 마스크
 }
@@ -175,6 +189,7 @@ def set_seg_image(image: Image.Image):
     """Detection → Segmentation 이미지 전달 시 호출."""
     _seg_state["image"]        = image
     _seg_state["points"]       = []
+    _seg_state["labels"]       = []
     _seg_state["current_mask"] = None
     _seg_state["final_mask"]   = None
 
@@ -192,17 +207,20 @@ def gradio_load_image(image_np):
         return None, "이미지를 업로드하세요."
     pil = Image.fromarray(image_np).convert("RGB")
     set_seg_image(pil)
-    overlay = render_overlay(pil, [], mask=None)
-    return overlay, "이미지 로드 완료. 클릭해서 포인트를 추가하세요.\n  좌클릭: 포인트 추가  |  우클릭 버튼: 마지막 포인트 취소"
+    overlay = render_overlay(pil, [], mask=None, labels=[])
+    return overlay, "이미지 로드 완료. 클릭해서 포인트를 추가하세요.\n  포함 ➕ 모드 좌클릭: 영역 추가  |  제외 ➖ 모드 좌클릭: 영역 제외  |  '마지막 포인트 취소' 버튼으로 되돌리기"
 
 
-def gradio_click(evt: gr.SelectData):
+def gradio_click(mode: str, evt: gr.SelectData):
     """
-    좌클릭: 포인트 추가 → 즉시 세그멘테이션 → 오버레이 반환.
+    좌클릭: 현재 모드(포함/제외)에 따라 포인트 추가 → 즉시 세그멘테이션.
     evt.index는 표시(렌더링)된 이미지 기준 좌표이므로 원본 크기로 변환.
     """
     if _seg_state["image"] is None:
         return None, "먼저 이미지를 로드하세요."
+
+    # 모드 → label (1=포함, 0=제외)
+    label = 1 if (mode is not None and str(mode).startswith("포함")) else 0
 
     # evt.index: render_overlay가 반환한 이미지(DISPLAY_SIZE 기준) 좌표
     disp_x, disp_y = evt.index[0], evt.index[1]
@@ -219,15 +237,34 @@ def gradio_click(evt: gr.SelectData):
     y = max(0, min(y, img_h - 1))
 
     _seg_state["points"].append((x, y))
+    _seg_state["labels"].append(label)
 
-    mask = run_segmentation(_seg_state["image"], _seg_state["points"])
+    # SAM2는 포함(1) 포인트가 최소 1개 있어야 마스크를 만들 수 있음.
+    # 제외 포인트만 있으면 모델을 돌리지 않고 안내만 표시.
+    if 1 not in _seg_state["labels"]:
+        overlay = render_overlay(
+            _seg_state["image"], _seg_state["points"],
+            _seg_state["current_mask"], _seg_state["labels"],
+        )
+        return overlay, (
+            "먼저 '포함 ➕' 모드로 대상을 한 번 이상 클릭하세요.\n"
+            "(제외 ➖ 포인트만으로는 마스크를 만들 수 없습니다)"
+        )
+
+    mask = run_segmentation(
+        _seg_state["image"], _seg_state["points"], _seg_state["labels"],
+    )
     _seg_state["current_mask"] = mask
 
-    overlay  = render_overlay(_seg_state["image"], _seg_state["points"], mask)
+    overlay  = render_overlay(
+        _seg_state["image"], _seg_state["points"], mask, _seg_state["labels"],
+    )
     coverage = int(mask.sum() / mask.size * 100)
+    n_pos = _seg_state["labels"].count(1)
+    n_neg = _seg_state["labels"].count(0)
     status   = (
-        f"포인트 {len(_seg_state['points'])}개  |  마스크 커버리지 {coverage}%\n"
-        f"추가 클릭으로 영역 확장  |  '마지막 포인트 취소' 버튼으로 되돌리기\n"
+        f"포함 {n_pos}개 · 제외 {n_neg}개  |  마스크 커버리지 {coverage}%\n"
+        f"제외할 부분이 있으면 '제외 ➖' 모드로 클릭  |  '마지막 포인트 취소'로 되돌리기\n"
         f"만족스러우면 '확인' 버튼을 누르세요."
     )
     return overlay, status
@@ -239,22 +276,38 @@ def gradio_undo():
         return None, "이미지가 없습니다."
 
     if not _seg_state["points"]:
-        overlay = render_overlay(_seg_state["image"], [], None)
+        overlay = render_overlay(_seg_state["image"], [], None, [])
         return overlay, "취소할 포인트가 없습니다."
 
     _seg_state["points"].pop()
+    if _seg_state["labels"]:
+        _seg_state["labels"].pop()
     points = _seg_state["points"]
+    labels = _seg_state["labels"]
 
     if not points:
         _seg_state["current_mask"] = None
-        overlay = render_overlay(_seg_state["image"], [], None)
+        overlay = render_overlay(_seg_state["image"], [], None, [])
         return overlay, "포인트가 모두 제거됐습니다. 다시 클릭하세요."
 
-    mask = run_segmentation(_seg_state["image"], points)
+    # 포함 포인트가 남아있지 않으면 마스크를 만들 수 없음
+    if 1 not in labels:
+        _seg_state["current_mask"] = None
+        overlay = render_overlay(_seg_state["image"], points, None, labels)
+        return overlay, (
+            "남은 포인트가 모두 '제외'입니다. '포함 ➕' 포인트를 추가하세요."
+        )
+
+    mask = run_segmentation(_seg_state["image"], points, labels)
     _seg_state["current_mask"] = mask
-    overlay  = render_overlay(_seg_state["image"], points, mask)
+    overlay  = render_overlay(_seg_state["image"], points, mask, labels)
     coverage = int(mask.sum() / mask.size * 100)
-    status   = f"포인트 {len(points)}개  |  마스크 커버리지 {coverage}%\n마지막 포인트가 취소됐습니다."
+    n_pos = labels.count(1)
+    n_neg = labels.count(0)
+    status   = (
+        f"포함 {n_pos}개 · 제외 {n_neg}개  |  마스크 커버리지 {coverage}%\n"
+        f"마지막 포인트가 취소됐습니다."
+    )
     return overlay, status
 
 
@@ -281,13 +334,14 @@ def gradio_confirm():
 def gradio_reset():
     """전체 초기화."""
     _seg_state["points"]        = []
+    _seg_state["labels"]        = []
     _seg_state["current_mask"]  = None
     _seg_state["final_mask"]    = None
 
     if _seg_state["image"] is None:
         return None, "이미지가 없습니다."
 
-    overlay = render_overlay(_seg_state["image"], [], None)
+    overlay = render_overlay(_seg_state["image"], [], None, [])
     return overlay, "초기화됐습니다. 다시 클릭해서 포인트를 추가하세요."
 
 
@@ -330,9 +384,10 @@ def build_ui() -> gr.Blocks:
         <div style="font-family:'Space Mono',monospace;font-size:0.72rem;color:#5a9abf;
                     background:#0a1520;border:1px solid #1a3a5c;border-radius:8px;
                     padding:10px 14px;margin-bottom:10px;line-height:1.9;">
-            🖱️ <b>좌클릭</b> — 포인트 추가 → 마스크 즉시 업데이트 &nbsp;|&nbsp;
-            ↩️ <b>마지막 포인트 취소</b> 버튼 — 되돌리기 &nbsp;|&nbsp;
-            ✅ <b>확인</b> — 마스크 확정
+            🖱️ <b>포함 ➕ 모드 좌클릭</b> — 영역 추가 &nbsp;|&nbsp;
+            🖱️ <b>제외 ➖ 모드 좌클릭</b> — 영역 제외 (예: 셔츠만 남기려면 얼굴·팔을 제외 클릭) &nbsp;|&nbsp;
+            ↩️ <b>마지막 포인트 취소</b> &nbsp;|&nbsp;
+            ✅ <b>확인</b>
         </div>
         """)
 
@@ -343,6 +398,11 @@ def build_ui() -> gr.Blocks:
                     label="이미지 업로드 (단독 실행 시)",
                     type="numpy",
                     height=160,
+                )
+                seg_mode = gr.Radio(
+                    ["포함 ➕", "제외 ➖"],
+                    value="포함 ➕",
+                    label="클릭 모드 (좌클릭 시 적용)",
                 )
                 seg_image = gr.Image(
                     label="클릭해서 세그멘테이션 영역 선택",
@@ -366,9 +426,10 @@ def build_ui() -> gr.Blocks:
             inputs=[upload_image],
             outputs=[seg_image, seg_status],
         )
-        # 좌클릭
+        # 좌클릭 (현재 모드 전달)
         seg_image.select(
             fn=gradio_click,
+            inputs=[seg_mode],
             outputs=[seg_image, seg_status],
         )
         # 마지막 포인트 취소

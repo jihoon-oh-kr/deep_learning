@@ -9,7 +9,7 @@ Stable Diffusion 1.5 Inpainting 기반 배경 복원 모듈.
   - prompt:             사용자 텍스트 프롬프트 (선택)
 
 출력:
-  - 객체가 제거되고 배경이 자연스럽게 채워진 이미지
+  - 선택 객체 영역이 변경되어 새 내용으로 채워진 이미지
 
 모델: runwayml/stable-diffusion-inpainting
   - VRAM ~4GB, RAM ~6GB
@@ -150,7 +150,7 @@ def run_inpainting(
     image: Image.Image,
     mask: np.ndarray,
     prompt: str = "",
-    negative_prompt: str = "person, human, people, face, body, blurry, bad quality, distorted, watermark",
+    negative_prompt: str = "blurry, bad quality, distorted, watermark",
     num_steps: int = 30,
     guidance_scale: float = 7.5,
     seed: int = -1,
@@ -347,7 +347,7 @@ def build_ui() -> gr.Blocks:
             # 왼쪽: 입력 및 파라미터
             with gr.Column(scale=1):
                 gr.HTML('<p style="font-family:\'Space Mono\',monospace;font-size:0.7rem;color:#3a6f9a;text-transform:uppercase;letter-spacing:0.1em;">입력 미리보기</p>')
-                inp_bg   = gr.Image(label="객체 제거된 배경 (인페인팅 입력)", type="numpy", height=220)
+                inp_bg   = gr.Image(label="객체 변경된 배경 (인페인팅 입력)", type="numpy", height=220)
                 inp_mask = gr.Image(label="마스크 (흰색=채울 영역)", type="numpy", height=220)
 
                 gr.HTML('<p style="font-family:\'Space Mono\',monospace;font-size:0.7rem;color:#3a6f9a;text-transform:uppercase;letter-spacing:0.1em;margin-top:12px;">프롬프트</p>')
@@ -359,12 +359,12 @@ def build_ui() -> gr.Blocks:
                 )
                 neg_prompt = gr.Textbox(
                     label="네거티브 프롬프트",
-                    value="blurry, bad quality, distorted, person, watermark",
+                    value="blurry, bad quality, distorted, watermark",
                     lines=2,
                 )
                 with gr.Row():
-                    num_steps = gr.Slider(10, 50, value=30, step=5, label="스텝 수")
-                    guidance  = gr.Slider(1.0, 15.0, value=7.5, step=0.5, label="가이던스")
+                    num_steps = gr.Slider(10, 50, value=10, step=5, label="스텝 수")
+                    guidance  = gr.Slider(1.0, 15.0, value=15.0, step=0.5, label="가이던스")
                 seed = gr.Slider(-1, 9999, value=-1, step=1, label="시드 (-1=랜덤)")
                 run_btn = gr.Button("🎨  인페인팅 실행", variant="primary")
 

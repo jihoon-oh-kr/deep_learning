@@ -7,7 +7,7 @@ Qwen2.5-VL 기반 파이프라인 요약 모듈.
   입력:
     - original_image:  원본 전체 이미지 (PIL)
     - final_image:     인페인팅 후 합성된 전체 이미지 (PIL)
-    - label:           제거된 객체 이름 (detection 결과)
+    - label:           변경된 객체 이름 (detection 결과)
     - user_question:   사용자 추가 질문 (선택)
   출력:
     - 파이프라인 과정 요약 텍스트
@@ -89,7 +89,7 @@ def build_prompt(
     VLM 프롬프트 생성.
 
     Args:
-        label:              제거된 객체 이름
+        label:              변경된 객체 이름
         user_question:      사용자 추가 질문
         box:                바운딩 박스 좌표 (x_min, y_min, x_max, y_max)
         image_size:         원본 이미지 크기 (width, height)
@@ -115,22 +115,29 @@ def build_prompt(
     inpaint_info = ""
     if inpainting_prompt.strip():
         inpaint_info = (
-            f" The user filled the removed area using the following prompt: "
-            f'"{inpainting_prompt.strip()}".'
+            f" The change was guided by this instruction: "
+            f'"{inpainting_prompt.strip()}", which describes what the selected part was meant '
+            f"to become. Use this instruction as the main clue for what the region was changed into."
         )
     else:
-        inpaint_info = " The removed area was filled automatically without a specific prompt."
+        inpaint_info = (
+            " No specific instruction was given, so the selected part was changed automatically. "
+            "Infer what changed by comparing the two images."
+        )
 
     base = (
         f"You are given two images.\n"
         f"- The first image is the original full photo.\n"
-        f"- The second image is the cropped region from the original where a '{label}' "
-        f"was detected, segmented, and removed via inpainting."
-        f"{location_info}"
+        f"- The second image is the edited result, cropped to the region around the detected object.\n\n"
+        f"A '{label}' was detected in the original photo.{location_info}\n"
+        f"IMPORTANT: detection located the whole '{label}', but only a specific PART of it was "
+        f"actually segmented and changed via inpainting. The edit may affect just a portion of the "
+        f"'{label}' (for example, only the shirt of a person, not the entire person). "
+        f"Do NOT assume the whole '{label}' was changed — compare the two images to identify which part actually changed."
         f"{inpaint_info}\n\n"
         f"Please summarize:\n"
-        f"1. What object was selected and where it was located in the original image\n"
-        f"2. What the removed area was replaced with\n"
+        f"1. What object was detected and where it was located in the original image\n"
+        f"2. Which specific part of it was actually changed, and what that part was changed into\n"
         f"3. How natural or successful the result appears to be"
     )
 
@@ -173,7 +180,7 @@ def run_vlm(
     Args:
         original_image:  원본 전체 이미지
         final_image:     인페인팅 후 최종 이미지
-        label:           제거된 객체 이름
+        label:           변경된 객체 이름
         user_question:   사용자 추가 질문
         max_new_tokens:  최대 생성 토큰 수
 
@@ -367,17 +374,17 @@ def build_ui() -> gr.Blocks:
 
             with gr.Column(scale=1):
                 v_label = gr.Textbox(
-                    label="제거된 객체 (자동 입력)",
+                    label="변경된 객체 (자동 입력)",
                     interactive=False,
                     lines=1,
                 )
                 v_question = gr.Textbox(
                     label="추가 질문 (선택 — 비워두면 기본 요약)",
-                    placeholder="예) Was the removal natural? What was behind the person?",
+                    placeholder="예) Was the change natural? What does the area look like now?",
                     lines=3,
                 )
                 v_max_tokens = gr.Slider(
-                    128, 1024, value=512, step=64,
+                    128, 1024, value=128, step=64,
                     label="최대 생성 토큰 수",
                 )
                 v_run_btn = gr.Button("🔍  요약 생성", variant="primary")
@@ -447,7 +454,7 @@ def build_standalone_ui() -> gr.Blocks:
                     lines=5,
                 )
                 s_max_tokens = gr.Slider(
-                    128, 1024, value=512, step=64,
+                    128, 1024, value=128, step=64,
                     label="최대 생성 토큰 수",
                 )
                 s_run_btn = gr.Button("🔍  실행", variant="primary")
