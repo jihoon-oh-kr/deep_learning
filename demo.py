@@ -276,7 +276,7 @@ def build_main_ui():
                         with gr.Row():
                             i_steps = gr.Slider(10, 50, value=10, step=5, label="스텝 수")
                             i_guide = gr.Slider(1.0, 15.0, value=15.0, step=0.5, label="가이던스")
-                        i_seed    = gr.Slider(-1, 9999, value=-1, step=1, label="시드 (-1=랜덤)")
+                        i_seed    = gr.Slider(-1, 9999, value=1, step=1, label="시드 (-1=랜덤)")
                         i_run_btn = gr.Button("🎨  인페인팅 실행", variant="primary")
 
                     with gr.Column(scale=1):

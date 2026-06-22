@@ -125,7 +125,8 @@ def build_prompt(
             "Infer what changed by comparing the two images."
         )
 
-    base = (
+    # 두 이미지에 대한 공통 컨텍스트 (질문 모드 / 요약 모드 모두 사용)
+    context = (
         f"You are given two images.\n"
         f"- The first image is the original full photo.\n"
         f"- The second image is the edited result, cropped to the region around the detected object.\n\n"
@@ -134,15 +135,27 @@ def build_prompt(
         f"actually segmented and changed via inpainting. The edit may affect just a portion of the "
         f"'{label}' (for example, only the shirt of a person, not the entire person). "
         f"Do NOT assume the whole '{label}' was changed — compare the two images to identify which part actually changed."
-        f"{inpaint_info}\n\n"
-        f"Please summarize:\n"
-        f"1. What object was detected and where it was located in the original image\n"
-        f"2. Which specific part of it was actually changed, and what that part was changed into\n"
-        f"3. How natural or successful the result appears to be"
+        f"{inpaint_info}"
     )
 
     if user_question.strip():
-        base += f"\n\nAdditional question: {user_question.strip()}"
+        # 질문이 있으면 요약은 하지 않고 질문에만 답변
+        base = (
+            f"{context}\n\n"
+            f"Answer the following question by carefully comparing the two images. "
+            f"Respond ONLY to the question. Do NOT produce a generic summary or a numbered list "
+            f"of detection/change/quality unless the question explicitly asks for it.\n\n"
+            f"Question: {user_question.strip()}"
+        )
+    else:
+        # 질문이 없으면 기본 요약
+        base = (
+            f"{context}\n\n"
+            f"Please summarize:\n"
+            f"1. What object was detected and where it was located in the original image\n"
+            f"2. Which specific part of it was actually changed, and what that part was changed into\n"
+            f"3. How natural or successful the result appears to be"
+        )
 
     return base
 
@@ -263,6 +276,9 @@ def _infer(messages: list, processor, model, max_new_tokens: int) -> str:
         output_ids = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.9,
         )
 
     generated = output_ids[:, inputs.input_ids.shape[1]:]

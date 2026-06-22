@@ -153,7 +153,7 @@ def run_inpainting(
     negative_prompt: str = "blurry, bad quality, distorted, watermark",
     num_steps: int = 30,
     guidance_scale: float = 7.5,
-    seed: int = -1,
+    seed: int = 1,
 ) -> Image.Image:
     """
     SD 1.5 Inpainting으로 마스크 영역을 자연스럽게 채움.
@@ -365,7 +365,7 @@ def build_ui() -> gr.Blocks:
                 with gr.Row():
                     num_steps = gr.Slider(10, 50, value=10, step=5, label="스텝 수")
                     guidance  = gr.Slider(1.0, 15.0, value=15.0, step=0.5, label="가이던스")
-                seed = gr.Slider(-1, 9999, value=-1, step=1, label="시드 (-1=랜덤)")
+                seed = gr.Slider(-1, 9999, value=1, step=1, label="시드 (-1=랜덤)")
                 run_btn = gr.Button("🎨  인페인팅 실행", variant="primary")
 
             # 오른쪽: 결과
